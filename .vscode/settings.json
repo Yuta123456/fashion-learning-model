@@ -1,0 +1,8 @@
+{
+    "files.autoGuessEncoding": true,
+    "editor.formatOnSave": true,
+    "[python]": {
+        // ファイル保存時に自動でフォーマットする
+        "editor.formatOnSave": true
+    },
+}

@@ -1,0 +1,7 @@
+data
+/IQON3000
+fashion-research-experiments
+/model_learning/compatibility/models
+/model_learning/topic_model/models
+/model_learning/compatibility/data
+__pycache__
