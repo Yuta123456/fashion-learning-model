@@ -8,6 +8,8 @@ from sklearn.metrics import roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
 import torch
 from PIL import Image
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -54,14 +56,25 @@ def calculate_centroid_and_average_distance(tensor_list):
 
 
 def calculate_euclid_sum(tensor_list):
-    distance12 = torch.norm(tensor_list[0] - tensor_list[1], dim=1, keepdim=True)
-    distance13 = torch.norm(tensor_list[0] - tensor_list[2], dim=1, keepdim=True)
-    distance23 = torch.norm(tensor_list[1] - tensor_list[2], dim=1, keepdim=True)
+    distance12 = torch.norm(tensor_list[0] - tensor_list[1])
+    distance13 = torch.norm(tensor_list[0] - tensor_list[2])
+    distance23 = torch.norm(tensor_list[1] - tensor_list[2])
 
     # ユークリッド距離の合計を計算
     total_distance = distance12 + distance13 + distance23
-
+    # print(distance12, distance23, distance13)
     return total_distance
+
+
+def calculate_euclid_max(tensor_list):
+    distance12 = torch.norm(tensor_list[0] - tensor_list[1])
+    distance13 = torch.norm(tensor_list[0] - tensor_list[2])
+    distance23 = torch.norm(tensor_list[1] - tensor_list[2])
+
+    # ユークリッド距離の合計を計算
+    max_distance = max(distance12, distance13, distance23)
+
+    return max_distance
 
 
 def calc_roc_auc(label, score, name):
@@ -187,3 +200,14 @@ def get_category(garment):
 
     if garment_kind in ["ブーツ", "パンプス", "スニーカー", "靴", "サンダル"]:
         return "shoes"
+
+
+def show_item(itemId):
+    # 画像ファイルのパスを指定
+    image_path = f"C:/Users/yuuta/Documents/fashion/data/images/{itemId}.jpg"
+
+    # 画像を開いて表示
+    img = mpimg.imread(image_path)
+    imgplot = plt.imshow(img)
+    plt.axis("off")  # 軸を非表示にする（オプション）
+    plt.show()
