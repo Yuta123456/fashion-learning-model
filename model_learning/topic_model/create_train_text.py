@@ -24,8 +24,8 @@ for fp in coordinates_file:
     json_dict = pd.read_json(fp, encoding="shift-jis")
     coordinate_attributes = ""
     items = list(filter(is_target_category, json_dict["items"]))
-    if len(items) != 3:
-        continue
+    # if len(items) != 3:
+    #     continue
     for item in items:
         item_id = str(item["itemId"])
         try:

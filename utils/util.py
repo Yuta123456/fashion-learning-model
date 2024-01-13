@@ -86,6 +86,17 @@ def calc_roc_auc(label, score, name):
     plt.xlabel("FPR: False positive rate")
     plt.ylabel("TPR: True positive rate")
     plt.grid()
+
+    plt.text(
+        0.5,
+        0.9,
+        f"AUC = {auc:.10f}",
+        ha="center",
+        va="center",
+        transform=plt.gca().transAxes,
+        bbox=dict(facecolor="white", alpha=0.8),
+    )
+
     plt.savefig(
         f"C:/Users/yuuta/Documents/fashion/model_learning/compatibility/result/{name}_roc.png"
     )
