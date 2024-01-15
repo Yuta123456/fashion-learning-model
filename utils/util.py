@@ -1,3 +1,4 @@
+import copy
 import json
 import random
 import pandas as pd
@@ -10,6 +11,9 @@ import torch
 from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+from itertools import product
+
+from utils.versatility import calc_increase_v, calc_versatility
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -222,3 +226,131 @@ def show_item(itemId):
     imgplot = plt.imshow(img)
     plt.axis("off")  # 軸を非表示にする（オプション）
     plt.show()
+
+
+# cwのスコアを計算。cwはitemIdで構成され、ver, comはそれぞれidからvectorへの変換器
+def calc_cw_score(
+    cw: dict[str, list[str]], ver: dict[str, torch.Tensor], com: dict[str, torch.Tensor]
+):
+    categories = list(cw.keys())
+    ver_score = 0
+    com_score = 0
+
+    # versatilityの計算
+    for cat in categories:
+        # print(cw[cat])
+        # categoryのアイテム集合
+        vectors = [torch.tensor(ver[itemId]) for itemId in cw[cat]]
+        ver_score += len(calc_versatility(vectors))
+
+    # compatibilityの計算
+    coordinates = list(product(*[cw[c] for c in categories]))
+    # print(len(coordinates))
+    # 組み合わせを表示
+    for coordinate in coordinates:
+        vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
+        com_score += calculate_euclid_max(vectors)
+
+    # return 1 / com_score.item(), ver_score
+    return scale_compatibility(1 / com_score.item()), scale_versability(ver_score)
+
+
+def scale_compatibility(c):
+    # min-max scaling
+    min_value = 7.839434299071509e-05
+    max_value = 0.0003497860890687236
+    standardized_data = (c - min_value) / (max_value - min_value)
+    scaled_data = max(0, standardized_data)
+
+    return scaled_data
+
+
+def scale_versability(v):
+    # min-max scaling
+    min_value = 642.0
+    max_value = 1030.0
+    standardized_data = (v - min_value) / (max_value - min_value)
+    scaled_data = max(0, standardized_data)
+
+    return scaled_data
+
+
+# compatibilityの追加スコア
+def calc_increase_c(
+    cw: dict[str, list[str]], com: dict[str, torch.Tensor], item: str, category: str
+):
+    categories = list(cw.keys())
+    com_score = 0
+    new_cw = copy.deepcopy(cw)
+    new_cw[category] = [item]
+    # compatibilityの計算
+    coordinates = list(product(*[new_cw[c] for c in categories]))
+    # print(len(coordinates))
+
+    # 組み合わせを表示
+    for coordinate in coordinates:
+        vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
+        com_score = calculate_euclid_max(vectors)
+
+    return 1 / com_score
+
+
+def calc_compatibility_score(cw: dict[str, list[str]], com: dict[str, torch.Tensor]):
+    categories = list(cw.keys())
+    com_score = 0
+    # compatibilityの計算
+    coordinates = list(product(*[cw[c] for c in categories]))
+
+    for coordinate in coordinates:
+        vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
+        com_score += calculate_euclid_max(vectors)
+
+    return scale_compatibility(1 / com_score.item())
+
+
+def optimize_cw(
+    cw: dict[str, list[str]],
+    dataset: dict[str, list[str]],
+    com: dict[str, torch.Tensor],
+    ver: dict[str, torch.Tensor],
+):
+    categories = list(cw.keys())
+    # 枚数
+    T = 3
+    eps = 10e-3
+    increase_score = eps + 1
+    pre_cw_score = 0
+    while increase_score > eps:
+        cw_score_confirm = 0
+        for cat in categories:
+            # そのレイヤを空にする
+            cw[cat] = []
+            # それぞれのスコアを初期化
+            ver_set = set()
+            com_score = 0
+            for _ in range(T):
+                # 追加するアイテムと、そのアイテムが追加されたことによるCWスコアの上昇値を初期化
+                add_item = None
+                max_increase_score = 10e-5
+                for item in dataset[cat]:
+                    if item in cw[cat]:
+                        continue
+                    # 増加分を計算
+                    increase_c = calc_increase_c(cw, com, item, cat)
+                    cover_clusters = calc_increase_v(torch.tensor(ver[item]))
+                    increase_v = len(cover_clusters.union(ver_set)) - len(ver_set)
+
+                    increase = increase_c + increase_v
+                    if max_increase_score < increase:
+                        max_increase_score = increase
+                        add_item = item
+
+                com_score += calc_increase_c(cw, com, add_item, cat)
+                ver_set = ver_set.union(calc_increase_v(torch.tensor(ver[add_item])))
+                # print(com_score)
+                cw[cat].append(add_item)
+            # cw_score_confirm += com_score + len(ver_set)
+            cw_score_confirm += com_score
+        score = sum(calc_cw_score(cw, com, ver))
+        increase_score = score - pre_cw_score
+        pre_cw_score = score

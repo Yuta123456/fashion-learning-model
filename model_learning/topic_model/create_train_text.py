@@ -6,7 +6,7 @@ import pandas as pd
 import sys
 
 sys.path.append("C:/Users/yuuta/Documents/fashion")
-from utils.util import is_target_category
+from utils.util import filter_basic_items, get_progress_percent, is_target_category
 
 coordinates_file = glob.glob(
     f"C:/Users/yuuta/Documents/fashion/data/train/**/*_new.json"
@@ -20,12 +20,14 @@ with open(
     attributes = json.load(f)
 
 documents = ""
-for fp in coordinates_file:
+SIZE = len(coordinates_file)
+for i, fp in enumerate(coordinates_file):
+    print(get_progress_percent(i, SIZE), end="")
     json_dict = pd.read_json(fp, encoding="shift-jis")
     coordinate_attributes = ""
-    items = list(filter(is_target_category, json_dict["items"]))
-    # if len(items) != 3:
-    #     continue
+    items = filter_basic_items(json_dict["items"])
+    if len(items) != 3:
+        continue
     for item in items:
         item_id = str(item["itemId"])
         try:
@@ -36,7 +38,7 @@ for fp in coordinates_file:
     documents += coordinate_attributes + "\n"
 
 with open(
-    "C:/Users/yuuta/Documents/fashion/model_learning/topic_model/train.txt",
+    "C:/Users/yuuta/Documents/fashion/model_learning/topic_model/train_new.txt",
     "w",
     encoding="utf-8",
 ) as f:
