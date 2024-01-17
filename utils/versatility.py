@@ -1,9 +1,9 @@
 import torch
 
 centroids = torch.load(
-    f"C:/Users/yuuta/Documents/fashion/model_learning/versatility/cluster/center_tensors_400.pt"
+    f"C:/Users/yuuta/Documents/fashion/model_learning/versatility/cluster/center_tensors_800.pt"
 ).numpy()
-NEAREST_ITEM_LENGTH = 210
+NEAREST_ITEM_LENGTH = 550
 
 
 def calc_versatility(vectors: list[torch.Tensor]):

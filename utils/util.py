@@ -230,49 +230,30 @@ def show_item(itemId):
 
 # cwのスコアを計算。cwはitemIdで構成され、ver, comはそれぞれidからvectorへの変換器
 def calc_cw_score(
-    cw: dict[str, list[str]], ver: dict[str, torch.Tensor], com: dict[str, torch.Tensor]
+    cw: dict[str, list[str]],
+    com: dict[str, torch.Tensor] = None,
+    ver: dict[str, torch.Tensor] = None,
 ):
     categories = list(cw.keys())
     ver_score = 0
-    com_score = 0
+    com_score = 1e-10
+    if ver != None:
+        # versatilityの計算
+        for cat in categories:
+            # print(cw[cat])
+            # categoryのアイテム集合
+            vectors = [torch.tensor(ver[itemId]) for itemId in cw[cat]]
+            ver_score += len(calc_versatility(vectors))
 
-    # versatilityの計算
-    for cat in categories:
-        # print(cw[cat])
-        # categoryのアイテム集合
-        vectors = [torch.tensor(ver[itemId]) for itemId in cw[cat]]
-        ver_score += len(calc_versatility(vectors))
-
-    # compatibilityの計算
-    coordinates = list(product(*[cw[c] for c in categories]))
-    # print(len(coordinates))
-    # 組み合わせを表示
-    for coordinate in coordinates:
-        vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
-        com_score += calculate_euclid_max(vectors)
-
-    # return 1 / com_score.item(), ver_score
-    return scale_compatibility(1 / com_score.item()), scale_versability(ver_score)
-
-
-def scale_compatibility(c):
-    # min-max scaling
-    min_value = 7.839434299071509e-05
-    max_value = 0.0003497860890687236
-    standardized_data = (c - min_value) / (max_value - min_value)
-    scaled_data = max(0, standardized_data)
-
-    return scaled_data
-
-
-def scale_versability(v):
-    # min-max scaling
-    min_value = 642.0
-    max_value = 1030.0
-    standardized_data = (v - min_value) / (max_value - min_value)
-    scaled_data = max(0, standardized_data)
-
-    return scaled_data
+    if com != None:
+        # compatibilityの計算
+        coordinates = list(product(*[cw[c] for c in categories]))
+        # print(len(coordinates))
+        # 組み合わせを表示
+        for coordinate in coordinates:
+            vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
+            com_score += calculate_euclid_max(vectors).item()
+    return 1 / com_score, ver_score
 
 
 # compatibilityの追加スコア
@@ -285,14 +266,15 @@ def calc_increase_c(
     new_cw[category] = [item]
     # compatibilityの計算
     coordinates = list(product(*[new_cw[c] for c in categories]))
-    # print(len(coordinates))
-
-    # 組み合わせを表示
-    for coordinate in coordinates:
-        vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
-        com_score = calculate_euclid_max(vectors)
-
-    return 1 / com_score
+    try:
+        # 組み合わせを表示
+        for coordinate in coordinates:
+            vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
+            com_score = calculate_euclid_max(vectors)
+    except:
+        print(coordinates)
+    com_score = 1 / com_score.item()
+    return com_score
 
 
 def calc_compatibility_score(cw: dict[str, list[str]], com: dict[str, torch.Tensor]):
@@ -305,15 +287,16 @@ def calc_compatibility_score(cw: dict[str, list[str]], com: dict[str, torch.Tens
         vectors = [torch.tensor(com[itemId]) for itemId in coordinate]
         com_score += calculate_euclid_max(vectors)
 
-    return scale_compatibility(1 / com_score.item())
+    return 1 / com_score.item()
 
 
 def optimize_cw(
-    cw: dict[str, list[str]],
+    original_cw: dict[str, list[str]],
     dataset: dict[str, list[str]],
-    com: dict[str, torch.Tensor],
-    ver: dict[str, torch.Tensor],
+    com: dict[str, torch.Tensor] = None,
+    ver: dict[str, torch.Tensor] = None,
 ):
+    cw = copy.deepcopy(original_cw)
     categories = list(cw.keys())
     # 枚数
     T = 3
@@ -321,7 +304,6 @@ def optimize_cw(
     increase_score = eps + 1
     pre_cw_score = 0
     while increase_score > eps:
-        cw_score_confirm = 0
         for cat in categories:
             # そのレイヤを空にする
             cw[cat] = []
@@ -336,21 +318,88 @@ def optimize_cw(
                     if item in cw[cat]:
                         continue
                     # 増加分を計算
-                    increase_c = calc_increase_c(cw, com, item, cat)
-                    cover_clusters = calc_increase_v(torch.tensor(ver[item]))
-                    increase_v = len(cover_clusters.union(ver_set)) - len(ver_set)
+                    increase_c, increase_v = 0, 0
+                    if com != None:
+                        increase_c = calc_increase_c(cw, com, item, cat)
+                    if ver != None:
+                        cover_clusters = calc_increase_v(torch.tensor(ver[item]))
+                        increase_v = len(cover_clusters.union(ver_set)) - len(ver_set)
 
+                    increase_c, increase_v = scale_increase_compatibility(
+                        increase_c
+                    ), scale_increase_versatility(increase_v)
                     increase = increase_c + increase_v
-                    if max_increase_score < increase:
+                    if increase > max_increase_score:
                         max_increase_score = increase
                         add_item = item
 
-                com_score += calc_increase_c(cw, com, add_item, cat)
-                ver_set = ver_set.union(calc_increase_v(torch.tensor(ver[add_item])))
-                # print(com_score)
+                if com != None:
+                    com_score = calc_increase_c(cw, com, add_item, cat)
+                if ver != None:
+                    ver_set = ver_set.union(
+                        calc_increase_v(torch.tensor(ver[add_item]))
+                    )
+
                 cw[cat].append(add_item)
-            # cw_score_confirm += com_score + len(ver_set)
-            cw_score_confirm += com_score
-        score = sum(calc_cw_score(cw, com, ver))
+
+        c, v = calc_cw_score(cw, com, ver)
+        c, v = scale_compatibility(c), scale_versatility(v)
+        score = c + v
         increase_score = score - pre_cw_score
         pre_cw_score = score
+    return cw
+
+
+def scale_compatibility(c):
+    # min-max scaling
+    # min_value = 0.000190
+    # max_value = 0.000695
+    # standardized_data = (c - min_value) / (max_value - min_value)
+    # scaled_data = max(0, standardized_data)
+
+    # z-standard
+    mu = 0.000442
+    std = 0.000061
+    scaled_data = (c - mu) / std
+    return max(0, scaled_data + 5)
+
+
+def scale_increase_compatibility(c):
+    # min-max scaling
+    # min_value = 0.001731
+    # max_value = 0.059114
+    # # print(f"c: {c}, c - min: {c - min_value}")
+    # standardized_data = (c - min_value) / (max_value - min_value)
+    # scaled_data = max(0, standardized_data)
+
+    # z-standard
+    mu = 0.010196
+    std = 0.003279
+    scaled_data = (c - mu) / std
+    return max(0, scaled_data + 5)
+
+
+def scale_versatility(v):
+    # min-max scaling
+    # min_value = 1000
+    # max_value = 1163
+    # standardized_data = (v - min_value) / (max_value - min_value)
+    # scaled_data = max(0, standardized_data)
+
+    mu = 1068.696000
+    std = 23.677687
+    scaled_data = (v - mu) / std
+    return max(0, scaled_data + 5)
+
+
+def scale_increase_versatility(v):
+    # min-max scaling
+    # min_value = 15
+    # max_value = 210
+    # standardized_data = (v - min_value) / (max_value - min_value)
+    # scaled_data = max(0, standardized_data)
+
+    mu = 118.744000
+    std = 70.477644
+    scaled_data = (v - mu) / std
+    return max(0, scaled_data + 5)
